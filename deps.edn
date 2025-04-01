@@ -1,0 +1,2 @@
+{:deps {manifold/manifold {:mvn/version "0.4.3"}
+        fmnoise/flow {:mvn/version "4.2.2"}}}
