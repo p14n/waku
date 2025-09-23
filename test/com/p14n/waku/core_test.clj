@@ -2,7 +2,8 @@
   (:require
    [com.p14n.waku.core :as waku :refer [then! then!*]]
    [fmnoise.flow :refer [else then]]
-   [clojure.test :refer [deftest is testing]])
+   [clojure.test :refer [deftest is testing]]
+   [manifold.deferred :as d])
   (:import
    [java.util UUID]))
 
@@ -31,10 +32,9 @@
 (defn reset-store! []
   (reset! a {}))
 
-#_(defn delayed [x]
-    (Thread/sleep 100)
-    (println x)
-    x)
+(defn delayed [x]
+  (Thread/sleep 50)
+  x)
 
 ;(d/deferred 1)
 ;(d/success-deferred 1)
@@ -79,4 +79,15 @@
       (is (= "test" workflow-name))
       (is (nil? latest-step))
       (is (nil? workflow-id))
-      (is (= {} @a)))))
+      (is (= {} @a))))
+
+  (testing "Async operations work"
+    (reset-store!)
+    (let [wf #(->> 1
+                   (then!* delayed)
+                   (then inc))
+          first-run (waku/run-workflow "test" wf)
+          _ (Thread/sleep 100)
+          second-run (waku/run-workflow "test" (:workflow-id first-run) wf)]
+      (is (d/deferrable? (:result first-run)))
+      (is (= 2 (:result second-run))))))
