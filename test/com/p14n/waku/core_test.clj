@@ -81,7 +81,7 @@
       (is (nil? workflow-id))
       (is (= {} @a))))
 
-  (testing "Async operations work"
+  (testing "Async operation delivers correct result on second run"
     (reset-store!)
     (let [wf #(->> 1
                    (then!* delayed)
@@ -90,4 +90,5 @@
           _ (Thread/sleep 100)
           second-run (waku/run-workflow "test" (:workflow-id first-run) wf)]
       (is (d/deferrable? (:result first-run)))
+      (is (= 1 (:latest-step first-run)))
       (is (= 2 (:result second-run))))))
