@@ -1,6 +1,6 @@
 (ns com.p14n.waku.core-test
   (:require
-   [com.p14n.waku.core :as waku :refer [then! then!*]]
+   [com.p14n.waku.core :as waku :refer [then! then!* then!*>]]
    [fmnoise.flow :refer [else then]]
    [clojure.test :refer [deftest is testing]]
    [manifold.deferred :as d])
@@ -11,12 +11,12 @@
   waku/StepStore
   (store-start! [_ wfname wfid step payload]
     (swap! store assoc-in ["workflows" wfname wfid step :start] payload))
-  (store-token-result! [_ token payload]
+  (store-callback-result! [_ token payload]
     (let [[wfname wfid step] (get @store ["tokens" token])]
       (swap! store assoc-in ["workflows" wfname wfid step :result] payload)))
   (store-result! [_ wfname wfid step payload]
     (swap! store assoc-in ["workflows" wfname wfid step :result] payload))
-  (store-result-token! [_ wfname wfid step]
+  (store-callback-token! [_ wfname wfid step callback-function]
     (let [token (str (UUID/randomUUID))]
       (swap! store assoc-in ["tokens" token] [wfname wfid step])
       token))
@@ -91,4 +91,16 @@
           second-run (waku/run-workflow "test" (:workflow-id first-run) wf)]
       (is (d/deferrable? (:result first-run)))
       (is (= 1 (:latest-step first-run)))
-      (is (= 2 (:result second-run))))))
+      (is (= 2 (:result second-run)))
+      (is (= "test" (:workflow-name second-run)))))
+
+  (testing "Async callback operation assigns new token"
+    (reset-store!)
+    (let [token (atom nil)
+          wf #(->> 1
+                   (then!*> (fn [_] (reset! token (waku/create-callback-token!))))
+                   (then inc))
+          first-run (waku/run-workflow "test" wf)
+          _ (Thread/sleep 100)]
+      (is (d/deferrable? (:result first-run)))
+      (is (not (nil? @token))))))

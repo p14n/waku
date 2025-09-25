@@ -128,8 +128,8 @@ Implement this protocol to provide your own storage backend:
 (defprotocol StepStore
   (store-start! [this wfname wfid step payload])
   (store-result! [this wfname wfid step payload])
-  (store-result-token! [this wfname wfid step])
-  (store-token-result! [this token payload])
+  (store-callback-token! [this wfname wfid step callback-function])
+  (store-callback-result! [this token payload])
   (get-steps [this wfname wfid])
   (get-result [this wfname wfid step]))
 ```

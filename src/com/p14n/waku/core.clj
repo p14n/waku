@@ -29,11 +29,11 @@
 
 (defprotocol StepStore
   (store-start! [this wfname wfid step payload])
-  (store-token-result!
+  (store-callback-result!
     [this token payload])
   (store-result!
     [this wfname wfid step payload])
-  (store-result-token! [this wfname wfid step])
+  (store-callback-token! [this wfname wfid step callback-function])
   (get-steps [this wfname wfid])
   (get-result [_ wfname wfid step]))
 
@@ -43,6 +43,7 @@
   (reset! store-atom s))
 
 (def ^:dynamic *current-workflow* nil)
+(def ^:dynamic create-callback-token! nil)
 
 (defn run-workflow
   ([workflow-name workflow-steps-function]
@@ -57,6 +58,12 @@
         (when (> s 0)
           {:workflow-id workflow-id
            :latest-step s}))))))
+
+(defn make-store-callback-token-fn [store workflow-name workflow-id workflow-step]
+  (fn cct
+    ([] (cct nil))
+    ([callback-function]
+     (store-callback-token! store workflow-name workflow-id workflow-step callback-function))))
 
 (defn then!
   ([f] (partial then! f))
@@ -78,12 +85,13 @@
              previous
              (do
                (store-start! store workflow-name workflow-id workflow-step value)
-               (let [v (flow/?ok value f)]
-                 (if (d/deferred? v)
-                   (d/on-realized v (partial store-result! store workflow-name workflow-id workflow-step)
-                                  println)
-                   (store-result! store workflow-name workflow-id workflow-step v))
-                 v)))))))))
+               (binding [create-callback-token! (make-store-callback-token-fn store workflow-name workflow-id workflow-step)]
+                 (let [v (flow/?ok value f)]
+                   (if (d/deferred? v)
+                     (d/on-realized v (partial store-result! store workflow-name workflow-id workflow-step)
+                                    println)
+                     (store-result! store workflow-name workflow-id workflow-step v))
+                   v))))))))))
 
 (defn then!*
   ([f] (partial then!* f))
@@ -95,3 +103,15 @@
         df))
     value)))
 
+(defn then!*>
+  ([f] (partial then!*> f))
+  ([f value]
+   (then!
+    (fn [v]
+      (let [df (d/deferred)
+            [workflow-name workflow-id step] *current-workflow*]
+        (future (binding [*current-workflow* [workflow-name workflow-id step]
+                          create-callback-token! (make-store-callback-token-fn @store-atom workflow-name workflow-id step)]
+                  (d/success! df (f v))))
+        df))
+    value)))
