@@ -9,19 +9,20 @@
 
 (defrecord StepStoreAtom [store]
   waku/StepStore
-  (store-start! [_ wfname wfid step payload]
+  (store-workflow-start! [this wfname wfid payload]
+    (swap! store assoc-in ["initial-payloads" wfname wfid] payload))
+  (store-step-start! [_ wfname wfid step payload]
     (swap! store assoc-in ["workflows" wfname wfid step :start] payload))
-  (store-callback-result! [_ token payload]
-    (let [[wfname wfid step] (get @store ["tokens" token])]
-      (swap! store assoc-in ["workflows" wfname wfid step :result] payload)))
-  (store-result! [_ wfname wfid step payload]
+  (store-step-result! [_ wfname wfid step payload]
     (swap! store assoc-in ["workflows" wfname wfid step :result] payload))
   (store-callback-token! [_ wfname wfid step callback-function]
     (let [token (str (UUID/randomUUID))]
-      (swap! store assoc-in ["tokens" token] [wfname wfid step])
+      (swap! store assoc-in ["tokens" token] [wfname wfid step callback-function])
       token))
-  (get-steps [_ wfname wfid]
-    (get-in @store ["workflows" wfname wfid]))
+  (get-callback-details [this token]
+    (let [[wfname wfid step callback-function] (get-in @store ["tokens" token])
+          initial-payload (get-in @store ["initial-payloads" wfname wfid])]
+      [wfname wfid step callback-function initial-payload]))
   (get-result [_ wfname wfid step]
     (get-in @store ["workflows" wfname wfid step :result])))
 
@@ -35,18 +36,6 @@
 (defn delayed [x]
   (Thread/sleep 50)
   x)
-
-;(d/deferred 1)
-;(d/success-deferred 1)
-
-
-#_(->> 1 ;(ex-info "Nope" {})
-       (then inc)
-       (then!* x)
-       (then inc)
-       (then (partial println "Done>>>>"))
-       (else (constantly "Er")))
-
 
 (deftest simple-value-update
   (testing "Value updates and correctly updates the store"
@@ -79,8 +68,9 @@
       (is (= "test" workflow-name))
       (is (nil? latest-step))
       (is (nil? workflow-id))
-      (is (= {} @a))))
+      (is (= {} @a)))))
 
+(deftest async-ops
   (testing "Async operation delivers correct result on second run"
     (reset-store!)
     (let [wf #(->> 1
@@ -94,13 +84,33 @@
       (is (= 2 (:result second-run)))
       (is (= "test" (:workflow-name second-run)))))
 
-  (testing "Async callback operation assigns new token"
+  (testing "Async callback operation assigns new token and calls value"
     (reset-store!)
     (let [token (atom nil)
-          wf #(->> 1
+          initial-values (atom [])
+          wf #(->> %
+                   (then (fn [v] (swap! initial-values conj %)))
                    (then!*> (fn [_] (reset! token (waku/create-callback-token!))))
                    (then inc))
-          first-run (waku/run-workflow "test" wf)
-          _ (Thread/sleep 100)]
+          _ (waku/register-callback-workflow! "test" wf)
+          first-run (waku/run-callback-workflow "test" 0)
+          _ (Thread/sleep 100)
+          callback-run (waku/run-workflow-from-callback @token 45)]
       (is (d/deferrable? (:result first-run)))
-      (is (not (nil? @token))))))
+      (is (not (nil? @token)))
+      (is (= 46 (:result callback-run)))
+      (is (= [0 0] @initial-values))))
+
+  (testing "Async callback operation operates result function"
+    (reset-store!)
+    (let [token (atom nil)
+          result-function (fn [v] (->> v (inc) (str v " was input, output: ")))
+          wf #(->> %
+                   (then!*> (fn [_] (reset! token (waku/create-callback-token! result-function)))))
+          _ (waku/register-callback-workflow! "test" wf)
+          first-run (waku/run-callback-workflow "test" 0)
+          _ (Thread/sleep 100)
+          callback-run (waku/run-workflow-from-callback @token 45)]
+      (is (d/deferrable? (:result first-run)))
+      (is (not (nil? @token)))
+      (is (= "45 was input, output: 46" (:result callback-run))))))

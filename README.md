@@ -40,9 +40,9 @@ First, implement the `StepStore` protocol or use the provided atom-based impleme
 
 (defrecord AtomStore [store]
   waku/StepStore
-  (store-start! [_ wfname wfid step payload]
+  (store-step-start! [_ wfname wfid step payload]
     (swap! store assoc-in ["workflows" wfname wfid step :start] payload))
-  (store-result! [_ wfname wfid step payload]
+  (store-step-result! [_ wfname wfid step payload]
     (swap! store assoc-in ["workflows" wfname wfid step :result] payload))
   (get-result [_ wfname wfid step]
     (get-in @store ["workflows" wfname wfid step :result]))
@@ -126,8 +126,8 @@ Implement this protocol to provide your own storage backend:
 
 ```clojure
 (defprotocol StepStore
-  (store-start! [this wfname wfid step payload])
-  (store-result! [this wfname wfid step payload])
+  (store-step-start! [this wfname wfid step payload])
+  (store-step-result! [this wfname wfid step payload])
   (store-callback-token! [this wfname wfid step callback-function])
   (store-callback-result! [this token payload])
   (get-steps [this wfname wfid])
