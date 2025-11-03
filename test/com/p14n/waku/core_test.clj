@@ -84,6 +84,19 @@
       (is (= 2 (:result second-run)))
       (is (= "test" (:workflow-name second-run)))))
 
+  (testing "Async operation delivers correct result in background"
+    (reset-store!)
+    (let [wf #(->> 1
+                   (then!* delayed)
+                   (then! inc))
+          first-run (waku/run-workflow "test" wf)
+          _ (Thread/sleep 100)
+          _ (println "MONKEY" "test" (:workflow-id first-run) 2)
+          second-step-result (waku/get-result @waku/store-atom "test" (:workflow-id first-run) 2)]
+      (is (d/deferrable? (:result first-run)))
+      (is (= 1 (:latest-step first-run)))
+      (is (= 2 second-step-result))))
+
   (testing "Async callback operation assigns new token and calls value"
     (reset-store!)
     (let [token (atom nil)

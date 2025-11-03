@@ -59,6 +59,12 @@
    (binding [*current-workflow* [workflow-name workflow-id (atom 0)]]
      (let [r (workflow-steps-function)
            s (deref (nth *current-workflow* 2))]
+       (when (d/deferred? r)
+         (d/on-realized r
+                        (fn [_]
+                          (println "Deferred realized HHHHHHHHHHHHHH")
+                          (run-workflow workflow-name workflow-id workflow-steps-function))
+                        println))
        (merge
         {:workflow-name workflow-name
          :result r}
@@ -126,6 +132,7 @@
        (if (d/deferred? value)
          (flow/?ok value f)
          (let [previous (get-result store workflow-name workflow-id workflow-step)]
+           (println workflow-name workflow-id workflow-step "PREVIOUS" previous)
            (if previous
              previous
              (execute-step store workflow-name workflow-id workflow-step f value))))))))
