@@ -246,6 +246,23 @@
         (store-step-result! store workflow-name workflow-id workflow-step v))
       v)))
 
+(defn assert-store
+  "Assert that a store is set.
+
+  Throws an exception if no store is set."
+  [store]
+  (when (nil? store)
+    (throw (ex-info "No store set. Have you called set-store?" {}))))
+
+(defn assert-workflow
+  "Assert that a workflow name and id are set.
+
+  Throws an exception if no workflow name or id is set."
+  [workflow-name workflow-id]
+  (when (or (nil? workflow-name)
+            (nil? workflow-id))
+    (throw (ex-info "No workflow name or id. Have you called run-workflow?" {}))))
+
 (defn then!
   "Execute a function on a value with step persistence and caching.
 
@@ -278,11 +295,8 @@
      (let [[workflow-name workflow-id last-step] *current-workflow*
            workflow-step (swap! last-step inc)
            store @store-atom]
-       (when (nil? store)
-         (throw (ex-info "No store set. Have you called set-store?" {})))
-       (when (or (nil? workflow-name)
-                 (nil? workflow-id))
-         (throw (ex-info "No workflow name or id. Have you called run-workflow?" {})))
+       (assert-store store)
+       (assert-workflow workflow-name workflow-id)
        (if (d/deferred? value)
          ;; Deferred values are passed through - they'll be handled by run-workflow
          (flow/?ok value f)
