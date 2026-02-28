@@ -1,6 +1,6 @@
 (ns com.p14n.waku.core-test
   (:require
-   [com.p14n.waku.core :as waku :refer [then! then!* then!*>]]
+   [com.p14n.waku.core :as waku :refer [then! then!* then!*> then-until!]]
    [fmnoise.flow :refer [else then]]
    [clojure.test :refer [deftest is testing]]
    [manifold.deferred :as d])
@@ -37,6 +37,20 @@
   (Thread/sleep 50)
   x)
 
+(defn explodes-once []
+  (let [exploded? (atom false)]
+    (fn [x]
+      (if @exploded?
+        x
+        (do
+          (reset! exploded? true)
+          (ex-info "Exploded" {}))))))
+
+(defn run-and-count [f counter]
+  (fn [x]
+    (swap! counter inc)
+    (f x)))
+
 (deftest simple-value-update
   (testing "Value updates and correctly updates the store"
     (reset-store!)
@@ -47,10 +61,43 @@
           (waku/run-workflow "test"
                              #(->> 1
                                    (then inc)
+                                   (then! inc)
                                    (then! inc)))]
-      (is (= 3 result))
-      (is (= 1 latest-step))
+      (is (= 4 result))
+      (is (= 2 latest-step))
       (is (= "test" workflow-name))
+      (is (string? workflow-id))))
+
+  (testing "Value updates and correctly updates the store in loop"
+    (reset-store!)
+    (let [{:keys [result
+                  latest-step
+                  workflow-id
+                  workflow-name]}
+          (waku/run-workflow "test"
+                             #(->> 1
+                                   (then inc)
+                                   (then-until! inc (fn [x] (= x 4)))))]
+      (is (= 4 result))
+      (is (= 2 latest-step))
+      (is (= "test" workflow-name))
+      (is (string? workflow-id))))
+
+  (testing "Value runs function only once on replay after failure"
+    (reset-store!)
+    (let [run-count (atom 0)
+          explodey (explodes-once)
+          counted-inc (run-and-count inc run-count)
+          wf #(->> 1
+                   (then! counted-inc)
+                   (then! explodey)
+                   (then! inc))
+          {:keys [workflow-id]} (waku/run-workflow "test" wf)
+          {:keys [result
+                  latest-step]} (waku/run-workflow "test" workflow-id wf)]
+      (is (= 3 result))
+      (is (= 3 latest-step))
+      (is (= 1 @run-count))
       (is (string? workflow-id))))
 
   (testing "Failure skips store"
