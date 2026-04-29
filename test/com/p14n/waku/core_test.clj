@@ -46,6 +46,15 @@
           (reset! exploded? true)
           (ex-info "Exploded" {}))))))
 
+(defn throws-once []
+  (let [exploded? (atom false)]
+    (fn [x]
+      (if @exploded?
+        x
+        (do
+          (reset! exploded? true)
+          (throw (ex-info "Exploded" {})))))))
+
 (defn run-and-count [f counter]
   (fn [x]
     (swap! counter inc)
@@ -87,6 +96,23 @@
     (reset-store!)
     (let [run-count (atom 0)
           explodey (explodes-once)
+          counted-inc (run-and-count inc run-count)
+          wf #(->> 1
+                   (then! counted-inc)
+                   (then! explodey)
+                   (then! inc))
+          {:keys [workflow-id]} (waku/run-workflow "test" wf)
+          {:keys [result
+                  latest-step]} (waku/run-workflow "test" workflow-id wf)]
+      (is (= 3 result))
+      (is (= 3 latest-step))
+      (is (= 1 @run-count))
+      (is (string? workflow-id))))
+
+  (testing "Value runs function only once on replay after throw"
+    (reset-store!)
+    (let [run-count (atom 0)
+          explodey (throws-once)
           counted-inc (run-and-count inc run-count)
           wf #(->> 1
                    (then! counted-inc)

@@ -4,7 +4,7 @@
   Provides workflow execution with automatic step persistence and resume capability.
   Supports both synchronous and asynchronous operations using Manifold deferreds."
   (:require
-   [fmnoise.flow :as flow :refer [then]]
+   [fmnoise.flow :as flow]
    [manifold.deferred :as d]
    [clojure.tools.logging :as log])
   (:import
@@ -234,7 +234,7 @@
   [store workflow-name workflow-id workflow-step f value]
   (store-step-start! store workflow-name workflow-id workflow-step value)
   (binding [create-callback-token! (make-store-callback-token-fn store workflow-name workflow-id workflow-step)]
-    (let [v (flow/?ok value f)]
+    (let [v (flow/?ok value (partial flow/call f))]
       (if (d/deferred? v)
         (d/on-realized v
                        (partial store-step-result! store workflow-name workflow-id workflow-step)
